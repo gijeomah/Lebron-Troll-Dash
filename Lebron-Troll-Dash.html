@@ -22,7 +22,6 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  height: 100vh;
   transition: background 0.5s, color 0.5s;
 }
 body.light-mode {
@@ -40,6 +39,7 @@ body.light-mode {
   border: 4px solid #0a0a0a;
   overflow: hidden;
   margin-top: 20px;
+  margin-bottom: 100px;
   transition: background 0.5s;
 }
 body.light-mode #game {
@@ -60,7 +60,7 @@ body.light-mode #ground {
   border-color: #999;
 }
 
-/* Buttons with neon glow */
+/* Neon buttons */
 button {
   margin: 8px;
   padding: 10px 20px;
@@ -80,7 +80,7 @@ button:hover {
   box-shadow: 0 0 20px #0ff, 0 0 30px #0ff inset;
 }
 
-/* Position toggle buttons */
+/* Toggle + mute positions */
 #toggleMode {
   position: fixed;
   top: 10px;
@@ -113,7 +113,7 @@ button:hover {
   object-fit: cover;
 }
 
-/* Character styles */
+/* Character visuals */
 .character {
   position: absolute;
   bottom: 60px;
@@ -167,14 +167,19 @@ button:hover {
 .character.jumping .arm.right { transform: rotate(30deg); }
 .character.jumping .leg.left { transform: rotate(25deg); }
 .character.jumping .leg.right { transform: rotate(-25deg); }
+
+/* Character heads */
 .character.lebron .head {
   background-image: url('https://tse3.mm.bing.net/th/id/OIP.pzpdYVoz4Mo9IDrN0HK9ZgHaEK?cb=12&rs=1&pid=ImgDetMain&o=7&rm=3');
 }
 .character.ethan .head {
   background-image: url('https://www.waketech.edu/sites/default/files/2024-09/Wake-Tech-Faculty-Ethan-Gardner.webp');
 }
+.character.mystery .head {
+  background-image: url('https://m.media-amazon.com/images/I/415EQWIdaoL._AC_SX679_.jpg');
+}
 
-/* Troll & obstacle */
+/* Troll & obstacles */
 .troll {
   position: absolute;
   bottom: 60px;
@@ -207,6 +212,36 @@ button:hover {
   display: none;
 }
 
+/* Story bar */
+#storyBar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: rgba(0,0,0,0.85);
+  color: #0ff;
+  font-size: 20px;
+  font-weight: bold;
+  text-align: center;
+  padding: 12px;
+  display: none;
+  box-shadow: 0 -4px 10px rgba(0,0,0,0.5);
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+#storyBar.show { display: block; opacity: 1; }
+#storyBar button {
+  margin-left: 15px;
+  padding: 6px 12px;
+  font-size: 16px;
+  background: #0ff;
+  color: #111;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
 #message { margin-top: 20px; font-size: 20px; font-weight: bold; }
 #celebrationOverlay {
   position: fixed; inset: 0;
@@ -227,6 +262,9 @@ button:hover {
   <div class="charOption" data-char="ethan">
     <img src="https://www.waketech.edu/sites/default/files/2024-09/Wake-Tech-Faculty-Ethan-Gardner.webp">
   </div>
+  <div class="charOption" data-char="mystery">
+    <img src="https://m.media-amazon.com/images/I/415EQWIdaoL._AC_SX679_.jpg">
+  </div>
 </div>
 
 <div id="game">
@@ -242,11 +280,17 @@ button:hover {
   <div id="genesis"></div>
 </div>
 
+<!-- Story bar -->
+<div id="storyBar">
+  <span>Something clicks… these trolls are not random. Genesis is watching — and laughing.</span>
+  <button id="continueBtn">Continue</button>
+</div>
+
 <div id="message">Press SPACE to jump. Collect trolls, avoid obstacles!</div>
 <button id="startBtn">Start Game</button>
 <button id="muteBtn">Mute Music</button>
 
-<iframe id="bgMusic" 
+<iframe id="bgMusic"
   src="https://www.youtube.com/embed/9PT67OXezZU?autoplay=1&loop=1&playlist=9PT67OXezZU&controls=0&mute=0"
   style="display:none;" allow="autoplay"></iframe>
 
@@ -261,14 +305,17 @@ message=document.getElementById('message'), startBtn=document.getElementById('st
 genesis=document.getElementById('genesis'), muteBtn=document.getElementById('muteBtn'),
 toggleModeBtn=document.getElementById('toggleMode'), bgMusic=document.getElementById('bgMusic'),
 celebrationOverlay=document.getElementById('celebrationOverlay'), playAgainBtn=document.getElementById('playAgainBtn'),
-charOptions=document.querySelectorAll('.charOption');
+charOptions=document.querySelectorAll('.charOption'), storyBar=document.getElementById('storyBar'),
+continueBtn=document.getElementById('continueBtn');
 
 let isJumping=false, jumpSpeed=0, gravity=0.8, characterBottom=60, gameRunning=false,
 inBossFight=false, obstacles=[], trolls=[], trollsCollected=0, gameInterval, obstacleInterval,
-trollInterval, bossFightTimer, bossFightTime=0, jumpCount=0, isMuted=false, currentCharacter='lebron';
+trollInterval, bossFightTimer, bossFightTime=0, jumpCount=0, isMuted=false, currentCharacter='lebron',
+storyPaused=false;
 
 function updateCharacterImage(){
-  character.classList.remove('lebron','ethan'); character.classList.add(currentCharacter);
+  character.classList.remove('lebron','ethan','mystery');
+  character.classList.add(currentCharacter);
 }
 
 function createObstacle(x){ const o=document.createElement('div'); o.className='obstacle'; o.style.left=x+'px'; game.appendChild(o); obstacles.push(o);}
@@ -279,6 +326,8 @@ function clearAll(){ obstacles.forEach(o=>o.remove()); trolls.forEach(t=>t.remov
 function collide(a,b){ return !(a.top>b.bottom||a.bottom<b.top||a.right<b.left||a.left>b.right);}
 
 function loop(){
+  if(storyPaused) return;
+
   obstacles.forEach(o=>{ let x=parseInt(o.style.left)-8; x<-50?remove(o,obstacles):o.style.left=x+'px'; });
   trolls.forEach(t=>{ let x=parseInt(t.style.left)-8; x<-60?remove(t,trolls):t.style.left=x+'px'; });
 
@@ -295,43 +344,90 @@ function loop(){
       if(collide(cRect,t.getBoundingClientRect())){
         trollsCollected++; remove(t,trolls);
         message.textContent=`Level - Trolls: ${trollsCollected}/5`;
+        if(trollsCollected === 3 && !storyPaused){
+          storyPaused = true;
+          storyBar.classList.add('show');
+        }
         if(trollsCollected>=5) startBoss();
       }
     }
   }
 }
 
-function startBoss(){ inBossFight=true; genesis.style.display='block';
+function startBoss(){ 
+  inBossFight=true; 
+  genesis.style.display='block';
   message.textContent="Boss fight! Defeat Genesis!";
   bossFightTime=20;
-  bossFightTimer=setInterval(()=>{ bossFightTime--; message.textContent=`Boss fight! Time left: ${bossFightTime}s`; if(bossFightTime<=0) end(false); },1000);
+  bossFightTimer=setInterval(()=>{ 
+    bossFightTime--; 
+    message.textContent=`Boss fight! Time left: ${bossFightTime}s`; 
+    if(bossFightTime<=0) end(false); 
+  },1000);
 }
 
-function end(win){ clearInterval(gameInterval); clearInterval(obstacleInterval); clearInterval(trollInterval); clearInterval(bossFightTimer);
+function end(win){ 
+  clearInterval(gameInterval); clearInterval(obstacleInterval); clearInterval(trollInterval); clearInterval(bossFightTimer);
   gameRunning=false; inBossFight=false; genesis.style.display='none'; clearAll(); characterBottom=60; character.style.bottom='60px';
-  character.classList.remove('jumping'); if(win){ celebrationOverlay.style.display='flex'; } else { message.textContent="TROLOLOLOLOL"; startBtn.style.display='inline-block';}
+  character.classList.remove('jumping'); 
+  if(win){ celebrationOverlay.style.display='flex'; } 
+  else { message.textContent="TROLOLOLOLOL"; startBtn.style.display='inline-block';}
 }
 
-function spawnObstacle(){ if(gameRunning) createObstacle(900+Math.random()*200); }
-function spawnTroll(){ if(gameRunning&&!inBossFight) createTroll(900+Math.random()*300); }
+/* --- More spacing between obstacles & trolls --- */
+function spawnObstacle(){ if(gameRunning) createObstacle(900+Math.random()*600+400); } 
+function spawnTroll(){ if(gameRunning&&!inBossFight) createTroll(900+Math.random()*700+300); }
 
-document.body.onkeydown=e=>{ if(e.code==='Space'&&gameRunning){ if(jumpCount<2){ isJumping=true; jumpSpeed=18; jumpCount++; character.classList.add('jumping'); } e.preventDefault(); }};
-
-startBtn.onclick=()=>{ startBtn.style.display='none'; message.textContent='Collect 5 trolls to fight Genesis!'; clearAll(); gameRunning=true; trollsCollected=0; genesis.style.display='none';
-  gameInterval=setInterval(loop,20); obstacleInterval=setInterval(spawnObstacle,1500); trollInterval=setInterval(spawnTroll,2000);
+document.body.onkeydown=e=>{ 
+  if(e.code==='Space'&&gameRunning){ 
+    if(jumpCount<2){ isJumping=true; jumpSpeed=18; jumpCount++; character.classList.add('jumping'); } 
+    e.preventDefault(); 
+  }
 };
 
-toggleModeBtn.onclick=()=>{ document.body.classList.toggle('light-mode'); toggleModeBtn.textContent=document.body.classList.contains('light-mode')?'Dark Mode':'Light Mode'; };
+startBtn.onclick=()=>{ 
+  startBtn.style.display='none'; 
+  message.textContent='Collect 5 trolls to fight Genesis!'; 
+  clearAll(); gameRunning=true; trollsCollected=0; genesis.style.display='none';
+  gameInterval=setInterval(loop,20); obstacleInterval=setInterval(spawnObstacle,1800); trollInterval=setInterval(spawnTroll,2500);
+};
 
-muteBtn.onclick=()=>{ isMuted=!isMuted; bgMusic.src=`https://www.youtube.com/embed/9PT67OXezZU?autoplay=1&loop=1&playlist=9PT67OXezZU&controls=0&mute=${isMuted?1:0}`; muteBtn.textContent=isMuted?'Unmute Music':'Mute Music'; };
+toggleModeBtn.onclick=()=>{ 
+  document.body.classList.toggle('light-mode'); 
+  toggleModeBtn.textContent=document.body.classList.contains('light-mode')?'Dark Mode':'Light Mode'; 
+};
 
-charOptions.forEach(opt=>{ opt.onclick=()=>{ charOptions.forEach(o=>o.classList.remove('selected')); opt.classList.add('selected'); currentCharacter=opt.dataset.char; updateCharacterImage(); }});
+muteBtn.onclick=()=>{ 
+  isMuted=!isMuted; 
+  bgMusic.src=`https://www.youtube.com/embed/9PT67OXezZU?autoplay=1&loop=1&playlist=9PT67OXezZU&controls=0&mute=${isMuted?1:0}`; 
+  muteBtn.textContent=isMuted?'Unmute Music':'Mute Music'; 
+};
+
+charOptions.forEach(opt=>{ 
+  opt.onclick=()=>{ 
+    charOptions.forEach(o=>o.classList.remove('selected')); 
+    opt.classList.add('selected'); 
+    currentCharacter=opt.dataset.char; 
+    updateCharacterImage(); 
+  }
+});
 
 playAgainBtn.onclick=()=>{ celebrationOverlay.style.display='none'; startBtn.style.display='inline-block'; message.textContent='Press Start to Play Again!'; };
 
-window.onload=()=>{ updateCharacterImage(); bgMusic.src=`https://www.youtube.com/embed/9PT67OXezZU?autoplay=1&loop=1&playlist=9PT67OXezZU&controls=0&mute=0`; };
+continueBtn.onclick = () => {
+  storyBar.classList.remove('show');
+  setTimeout(()=>{ storyPaused=false; },300);
+};
+
+window.onload=()=>{ 
+  updateCharacterImage(); 
+  bgMusic.src=`https://www.youtube.com/embed/9PT67OXezZU?autoplay=1&loop=1&playlist=9PT67OXezZU&controls=0&mute=0`; 
+};
 </script>
 </body>
 </html>
+
+
+
 
 
